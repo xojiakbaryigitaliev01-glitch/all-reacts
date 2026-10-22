@@ -31,7 +31,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, format, *args):
-        pass  # har bir so'rovni logga yozmaslik uchun
+        pass
 
 
 def run_health_server():
@@ -41,7 +41,6 @@ def run_health_server():
 
 
 def parse_bots(raw):
-    """'token1|❤️,token2|🔥' ko'rinishidagi matnni ro'yxatga aylantiradi."""
     bots = []
     for item in raw.split(","):
         item = item.strip()
@@ -73,7 +72,17 @@ def make_reaction_handler(emoji):
 
 
 async def start_bot(token, emoji):
-    app = ApplicationBuilder().token(token).build()
+    app = (
+        ApplicationBuilder()
+        .token(token)
+        .connect_timeout(30)
+        .read_timeout(30)
+        .write_timeout(30)
+        .pool_timeout(30)
+        .get_updates_connect_timeout(30)
+        .get_updates_read_timeout(30)
+        .build()
+    )
     app.add_handler(
         MessageHandler(filters.UpdateType.CHANNEL_POST, make_reaction_handler(emoji))
     )
@@ -85,18 +94,27 @@ async def start_bot(token, emoji):
     return app
 
 
+async def start_with_retry(token, emoji, attempts=3):
+    for i in range(1, attempts + 1):
+        try:
+            return await start_bot(token, emoji)
+        except Exception as e:
+            logger.warning("%s-urinish: %s ishga tushmadi: %s", i, emoji, e)
+            await asyncio.sleep(5 * i)
+    logger.error("%s bot %s urinishdan keyin ham ishga tushmadi", emoji, attempts)
+    return None
+
+
 async def main_async(bots):
     started = []
     for token, emoji in bots:
-        try:
-            app = await start_bot(token, emoji)
+        app = await start_with_retry(token, emoji)
+        if app:
             started.append(app)
-        except Exception as e:
-            # Bitta noto'g'ri token butun botlarni to'xtatmasin
-            logger.error("Bot ishga tushmadi (%s): %s", emoji, e)
+        await asyncio.sleep(2)  # botlarni ketma-ket ulash
 
     logger.info("%d/%d bot ishga tushdi", len(started), len(bots))
-    await asyncio.Event().wait()  # botlar doim ishlab turishi uchun
+    await asyncio.Event().wait()
 
 
 def main():
