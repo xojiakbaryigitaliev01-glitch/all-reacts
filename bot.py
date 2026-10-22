@@ -1,4 +1,5 @@
 import os
+import random
 import asyncio
 import logging
 import threading
@@ -58,6 +59,7 @@ def make_reaction_handler(emoji):
         post = update.channel_post
         if post is None:
             return
+        await asyncio.sleep(random.uniform(1, 8))  # botlar bir vaqtda urmasin
         try:
             await context.bot.set_message_reaction(
                 chat_id=post.chat_id,
